@@ -1,0 +1,204 @@
+!pip install pendulum
+
+import matplotlib.pyplot as plt
+import statistics
+import pendulum
+import math
+import numpy as np
+import yfinance as yf
+import pandas as pd
+
+#Visualise stocks and collect data - change tickers to compare different stocks - can also change moving average visualisation depending on what timeframe we want to see
+#Example of Microsft and Apple
+stock1 = 'MSFT'
+stock2 = 'AAPL'
+# Stock 1 data
+price_history_1 = yf.Ticker(stock1).history(period='2y',interval='1wk', actions=False)
+time_series_1 = list(price_history_1['Open'])
+dt_list_1 = [pendulum.parse(str(dt)).float_timestamp for dt in list(price_history_1.index)]
+moving_average_10_1 = np.zeros(len(time_series_1))
+hold10_1 = []
+
+# Stock 2 data
+price_history_2 = yf.Ticker(stock2).history(period='2y',interval='1wk', actions=False)
+time_series_2 = list(price_history_2['Open'])
+dt_list_2 = [pendulum.parse(str(dt)).float_timestamp for dt in list(price_history_2.index)]
+moving_average_10_2 = np.zeros(len(time_series_2))
+hold10_2 = []
+
+for i in range(len(time_series_1)):
+
+  if i < 10:
+    moving_average_10_1[i] = time_series_1[i]
+    hold10_1.append(time_series_1[i])
+  elif i > 10:
+     hold10_1.pop()
+     hold10_1.append(time_series_1[i])
+     moving_average_10_1[i] = statistics.mean(hold10_1)
+  elif i == 10:
+    hold10_1.append(time_series_1[i])
+    moving_average_10_1[i] = statistics.mean(hold10_1)
+
+for i in range(len(time_series_2)):
+
+  if i < 10:
+    moving_average_10_2[i] = time_series_2[i]
+    hold10_2.append(time_series_2[i])
+  elif i > 10:
+     hold10_2.pop()
+     hold10_2.append(time_series_2[i])
+     moving_average_10_2[i] = statistics.mean(hold10_2)
+  elif i == 10:
+    hold10_2.append(time_series_2[i])
+    moving_average_10_2[i] = statistics.mean(hold10_2)
+
+#Plot
+#plt.style.use('dark_background')
+plt.figure(figsize = (12,6))
+plt.plot(dt_list_1, time_series_1, linewidth=2, c = 'r')
+plt.plot(dt_list_1, moving_average_10_1, linewidth=1, c = 'b')
+plt.plot(dt_list_2, time_series_2, linewidth=2, c= 'g')
+plt.plot(dt_list_2, moving_average_10_2, linewidth=1, c = 'y')
+plt.legend([stock1, stock1 + ' 10 MA', stock2, stock2 + ' 10 MA'])
+plt.xlabel('Time')
+plt.ylabel('Price')
+
+# First test chosen stocks to see if they are individually stationary and if the parameters of the stock data do not change overtime - we want small p values as this means we can reject the null hypthesis
+from statsmodels.tsa.stattools import adfuller, coint
+
+# Individual tests for stationarity using ADF
+p_value_1 = adfuller(time_series_1)[1]
+p_value_2 = adfuller(time_series_2)[1]
+print("p value 1: %5.2f, p value 2: %5.2f" % (p_value_1, p_value_2))
+# Only test for cointegration if both stocks are stationary and so we can test if the two datasets are cointegrated
+cutoff = 0.01
+if p_value_1 < cutoff and p_value_2 < cutoff:
+  print("Both series individually stationary so we can test for cointegration")
+  coint_score, coint_p_value = coint(time_series_1, time_series_2)
+  if coint_p_value < 0.05:
+    print("The two series are cointegrated and should be suitable for pairs trading")
+  else:
+    print("The two series are not cointegrated and are not suitable for pairs trading")
+else:
+  print("One of or both series are not stationary therefore this pair is not suitable for paris trading")
+
+
+import statsmodels.api as sm
+# first calculate the spread using the coefficient for linear combination from engle-granfer method done before in cointegration test
+#S1 = sm.add_constant(time_series_1)
+results = sm.OLS(time_series_2, time_series_1).fit()
+b = results.params
+spread = time_series_2 - b * time_series_1
+spread = pd.DataFrame(spread)
+
+# Single test using hand picked moving averages to calculate z score of spread and allow us to visualise the z score and and any deviations from the mean of the spread. Then trading backtest can be run off of the z score
+# as we can then use the z score as a trading signal as it tell s us when a datapoint is a number of standard deviations from the mean
+
+mavg5 = spread.rolling(window=5, center=False).mean()
+mavg60 = spread.rolling(window=20, center = False).mean()
+std60 = spread.rolling(window=20, center = False).std()
+
+plt.figure(figsize=(12, 6))
+plt.plot(spread.index, spread.values)
+plt.plot(mavg5.index, mavg5.values)
+plt.plot(mavg60.index, mavg60.values)
+plt.legend(['Spread', '5d Ratio MA', '60d Ratio MA'])
+plt.xlabel('Time')
+plt.ylabel('Spread')
+
+# Z score calculation and plot to see how much spread deviates from mean
+zscore = (mavg5 - mavg60)/std60
+plt.figure(figsize=(12,6))
+plt.plot(zscore)
+#plt.xlim('2013-03-25', '2016-07-01')
+plt.axhline(0, color='black')
+plt.axhline(1.0, color='red', linestyle='--')
+plt.axhline(-1.0, color='green', linestyle='--')
+plt.legend(['Rolling spread z-Score', 'Mean', '+1', '-1'])
+
+
+# Initial backtest of selected moving average values before running feature engineering to optimise - check profitability is possible (begin by defining the trade backtest function)
+def trade_test(S1, S2, window1, window2):
+  if window1 == 0 or window2 == 0:
+    print("Invalid window sizing")
+    return 0
+  # Calc spread and indicators
+  results = sm.OLS(S2, S1).fit()
+  b = results.params
+  spread = S2 - b * S1
+  spread = pd.DataFrame(spread)
+
+  ma1 = spread.rolling(window=window1, center=False).mean()
+  ma2 = spread.rolling(window=window2, center=False).mean()
+  std = spread.rolling(window=window2, center=False).std()
+  zscore = (ma1 - ma2)/std
+
+  # Position an pnl set to 0 to start and no position limits - for now short 1 long 1 and very basic exit points, no stop loss and no ratio or spread buying
+  pnl = 0
+  pnldata = []
+  counts1 = 0
+  counts2 = 0
+  for i in range(len(spread)):
+    if (zscore.iloc[i] < -1).bool():
+      pnl += S1[i] - S2[i]
+      counts1 -= 1
+      counts2 += 1
+    elif (zscore.iloc[i] > 1).bool():
+      pnl += S2[i] - S1[i]
+      counts1 += 1
+      counts2 -= 1
+    elif (abs(zscore.iloc[i]) < 0.75).bool():
+      pnl += S1[i] * counts1 + S2[i] * counts2
+      counts1 = 0
+      counts2 = 0
+    pnldata.append(pnl)
+  return pnl, pnldata
+
+pnl_test, pnl_data_test = trade_test(time_series_1,time_series_2, 5, 20)
+print(pnl_test)
+plt.figure()
+plt.plot(pnl_data_test)
+plt.ylabel('pnl')
+plt.xlabel('Time')
+
+# Feature engineering to calculate the right moving averages of the spread and z score to produce the best trading results when working out if one of the series has deviated from the mean
+
+# To avoid overfitting can use economic reasoning and logic to question if our result is optimal and can also use kalman filtering and performing train and test splits - kalman filter to know when to enter a trade
+# and know when the spread has deviated too far or significantly
+
+# Now just need to fix trading, input test-train split and include stop loss and trading scenarios
+
+# Perform a train test split so that we can test our optimised model
+bestavg1 = 0
+bestavg2 = 0
+bestpnl = 0
+best_pnl_data_test = []
+# Loop over moving average values - change depending on timeframe
+for i in range(1,100):
+  for j in range(1,100):
+    pnl_test, pnl_data_test = trade_test(time_series_1,time_series_2, i, j)
+
+    if bestavg1 == 0 and bestavg2 == 0:
+      bestavg1 = i
+      bestavg1 = j
+      bestpnl = pnl_test
+      best_pnl_data_test
+    elif pnl_test > bestpnl:
+      bestpnl = pnl_test
+      bestavg1 = i
+      bestavg2 = j
+      best_pnl_data_test = pnl_data_test
+
+print('Best moving average for stock 1:')
+print(bestavg1)
+
+print('Best moving average for stock 2:')
+print(bestavg2)
+
+print('Resulting in a pnl over the test data of:')
+print(bestpnl)
+
+plt.figure(figsize=(12,6))
+plt.plot(best_pnl_data_test)
+plt.ylabel('pnl')
+plt.xlabel('Time')
