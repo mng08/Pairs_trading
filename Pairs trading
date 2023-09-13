@@ -166,7 +166,6 @@ plt.xlabel('Time')
 
 # Now just need to fix trading, input test-train split and include stop loss and trading scenarios
 
-# Perform a train test split so that we can test our optimised model
 bestavg1 = 0
 bestavg2 = 0
 bestpnl = 0
