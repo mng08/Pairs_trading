@@ -27,7 +27,6 @@ moving_average_10_2 = np.zeros(len(time_series_2))
 hold10_2 = []
 
 for i in range(len(time_series_1)):
-
   if i < 10:
     moving_average_10_1[i] = time_series_1[i]
     hold10_1.append(time_series_1[i])
@@ -40,7 +39,6 @@ for i in range(len(time_series_1)):
     moving_average_10_1[i] = statistics.mean(hold10_1)
 
 for i in range(len(time_series_2)):
-
   if i < 10:
     moving_average_10_2[i] = time_series_2[i]
     hold10_2.append(time_series_2[i])
@@ -84,7 +82,7 @@ else:
 
 
 import statsmodels.api as sm
-# first calculate the spread using the coefficient for linear combination from engle-granfer method done before in cointegration test
+# first calculate the spread using the coefficient for linear combination from engle-granfer method done before in cointegration test. Find coefficients from linear regression
 #S1 = sm.add_constant(time_series_1)
 results = sm.OLS(time_series_2, time_series_1).fit()
 b = results.params
