@@ -159,7 +159,8 @@ plt.plot(pnl_data_test)
 plt.ylabel('pnl')
 plt.xlabel('Time')
 
-# Feature engineering to calculate the right moving averages of the spread and z score to produce the best trading results when working out if one of the series has deviated from the mean
+# Feature engineering to calculate the right moving averages of the spread and z score to produce the best trading results when working out if one of the series has deviated from the mean.
+# N.B. this is likely to overfit to the backtest but will give a better idea of the general range of values to use. 
 
 # To avoid overfitting can use economic reasoning and logic to question if our result is optimal and can also use kalman filtering and performing train and test splits - kalman filter to know when to enter a trade
 # and know when the spread has deviated too far or significantly
